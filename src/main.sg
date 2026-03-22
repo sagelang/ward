@@ -1,0 +1,153 @@
+extern fn args() -> List<String>
+extern fn arg_at(index: Int) -> String
+extern fn join_args(from: Int) -> String
+extern fn banner(version: String) -> String
+extern fn footer() -> String
+extern fn styled(text: String, style: String) -> String
+extern fn status(steward: String, msg: String) -> String
+extern fn ward_says(msg: String) -> String
+extern fn header(title: String) -> String
+extern fn success(msg: String) -> String
+extern fn failure(msg: String) -> String
+extern fn warning(msg: String) -> String
+extern fn phase(number: Int, title: String) -> String
+extern fn indent(text: String, prefix: String) -> String
+extern fn hr(width: Int) -> String
+extern fn cwd() -> String
+extern fn now_iso() -> String
+extern fn exit_process(code: Int) -> Unit
+extern fn env_var(key: String) -> Option<String>
+extern fn prompt(msg: String) -> String
+extern fn clear_screen() -> Unit
+extern fn save_files_from_response(response: String) -> String
+extern fn clean_response(response: String) -> String
+extern fn extract_shell_command(response: String) -> String
+extern fn safe_shell_run(cmd: String) -> String
+
+const VERSION: String = "0.1.0";
+const WARD_DIR: String = ".ward";
+
+fn show_commands() -> Unit {
+    print("");
+    print(styled("  Commands:", "bold_gold"));
+    print("");
+    print(status("help  ", "Show available commands"));
+    print(status("init  ", "Initialize Ward in current project"));
+    print(status("scan  ", "Scan project structure"));
+    print(status("status", "Show Ward session status"));
+    print(status("clear ", "Clear the screen"));
+    print(status("exit  ", "Leave Ward"));
+    print("");
+    print(ward_says("Just type naturally. I can run commands and create files."));
+    print("");
+}
+
+agent Ward {
+    use Shell, Fs
+    @persistent session_count: Int
+    @persistent project_name: String
+    @persistent conversation: String
+    @persistent pending_response: String
+
+    on start {
+        self.session_count.set(self.session_count.get() + 1);
+        self.conversation.set("");
+        print(banner(VERSION));
+        print(ward_says("Ready when you are, Chief. Type " ++ styled("help", "gold") ++ " for commands."));
+        print(footer());
+
+        loop {
+            let raw = prompt("  ▸");
+            let input = trim(raw);
+
+            if input == "" {
+                // skip empty input
+            } else if input == "exit" || input == "quit" || input == "q" {
+                print("");
+                print(ward_says("Until next time, Chief."));
+                print(footer());
+                break;
+            } else if input == "help" || input == "?" {
+                show_commands();
+            } else if input == "init" {
+                try Fs.write(WARD_DIR ++ "/config.toml", "# Ward configuration");
+                self.project_name.set(cwd());
+                print("");
+                print(phase(1, "Initializing Ward"));
+                print(success("Created " ++ WARD_DIR));
+                print(ward_says("I shall keep watch over this project."));
+                print("");
+            } else if input == "scan" {
+                print("");
+                print(phase(1, "Scanning Project"));
+                print(status("target", cwd()));
+                let result = try Shell.run("find . -maxdepth 2 -type f -not -path '*/target/*' -not -path '*/.git/*' | head -30");
+                print(header("Project Structure"));
+                print(indent(result.stdout, "  "));
+                print("");
+            } else if input == "status" {
+                print("");
+                print(header("Ward Status"));
+                print(status("sessions", "Session #" ++ str(self.session_count.get())));
+                print(status("project ", self.project_name.get()));
+                print(status("cwd     ", cwd()));
+                print(status("time    ", now_iso()));
+                print("");
+            } else if input == "clear" {
+                clear_screen();
+            } else {
+                print("");
+                print(ward_says("Pondering..."));
+                let context = self.conversation.get();
+                let working_dir = cwd();
+
+                // Initial LLM call with tool instructions
+                self.pending_response.set(try divine("You are Ward, a wise and concise coding assistant owl running in a terminal on macOS. Working directory: {working_dir}\nCapabilities:\n- To run a shell command and see its output: <<<SHELL:command here>>>\n- To create or save a file: <<<SAVE:filename>>>\nfile content\n<<<END>>>\nIMPORTANT: When the user asks you to DO something (check a port, list files, install something, run a test), USE your tools. Do not just tell them what command to run — run it yourself. Be concise and direct.\n\nPrevious conversation:\n{context}\nUser: {input}") catch {
+                    "The owl's wisdom is momentarily unavailable."
+                });
+
+                // Tool-use: if the LLM requested a shell command, execute it and get a final answer
+                let cmd = extract_shell_command(self.pending_response.get());
+                if cmd != "" {
+                    print(status("shell ", cmd));
+                    let output = safe_shell_run(cmd);
+                    let prior = self.pending_response.get();
+                    self.pending_response.set(try divine("You are Ward. You ran the command: {cmd}\nOutput:\n{output}\n\nContext:\n{context}\nUser: {input}\nYour earlier thoughts: {prior}\n\nGive a concise final answer incorporating the command output. Use <<<SAVE:filename>>>...<<<END>>> if creating files.") catch {
+                        prior ++ "\n\nCommand output:\n" ++ output
+                    });
+                }
+
+                // Process file saves and display clean response
+                let answer = self.pending_response.get();
+                let saved = save_files_from_response(answer);
+                let clean = clean_response(answer);
+
+                print(header("Answer"));
+                print(indent(clean, "  "));
+                if saved != "" {
+                    print("");
+                    print(saved);
+                }
+                print("");
+                self.conversation.set(context ++ "User: " ++ input ++ "\nWard: " ++ clean ++ "\n");
+            }
+        }
+
+        yield(0);
+    }
+
+    on error(e) {
+        print(failure("Ward encountered an error."));
+        print(footer());
+        yield(1);
+    }
+}
+
+supervisor WardSupervisor {
+    strategy: OneForOne
+    children {
+        Ward { restart: Transient, session_count: 0, project_name: "", conversation: "", pending_response: "" }
+    }
+}
+
+run WardSupervisor;

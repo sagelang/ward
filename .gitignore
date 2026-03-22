@@ -1,0 +1,5 @@
+/hearth/
+/target/
+.ward/
+.env
+index.html
