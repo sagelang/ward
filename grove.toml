@@ -1,10 +1,4 @@
 [project]
 name = "ward"
-version = "0.1.0"
+version = "0.2.0"
 entry = "src/main.sg"
-
-[extern]
-modules = ["src/sage_extern.rs"]
-
-[extern.dependencies]
-chrono = "0.4"

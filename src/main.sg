@@ -1,31 +1,242 @@
-extern fn args() -> List<String>
-extern fn arg_at(index: Int) -> String
-extern fn join_args(from: Int) -> String
-extern fn banner(version: String) -> String
-extern fn footer() -> String
-extern fn styled(text: String, style: String) -> String
-extern fn status(steward: String, msg: String) -> String
-extern fn ward_says(msg: String) -> String
-extern fn header(title: String) -> String
-extern fn success(msg: String) -> String
-extern fn failure(msg: String) -> String
-extern fn warning(msg: String) -> String
-extern fn phase(number: Int, title: String) -> String
-extern fn indent(text: String, prefix: String) -> String
-extern fn hr(width: Int) -> String
-extern fn cwd() -> String
-extern fn now_iso() -> String
-extern fn exit_process(code: Int) -> Unit
-extern fn env_var(key: String) -> Option<String>
-extern fn prompt(msg: String) -> String
-extern fn clear_screen() -> Unit
-extern fn save_files_from_response(response: String) -> String
-extern fn clean_response(response: String) -> String
-extern fn extract_shell_command(response: String) -> String
-extern fn safe_shell_run(cmd: String) -> String
+// =============================================================================
+// Ward — The Sage Coding Agent (Pure Sage)
+// =============================================================================
+//
+// Ward's visual identity uses the official Sage mascot palette:
+//   Feather Base Dark  #3D4F44  rgb(61, 79, 68)
+//   Feather Mid Sage   #5A7A62  rgb(90, 122, 98)
+//   Feather Light      #8FA88F  rgb(143, 168, 143)
+//   Brow/Accent Gold   #D4A017  rgb(212, 160, 23)
+//   Gold Highlights    #F0C040  rgb(240, 192, 64)
+//   Background Dark    #1A1F1E  rgb(26, 31, 30)
 
-const VERSION: String = "0.1.0";
+const VERSION: String = "0.2.0";
 const WARD_DIR: String = ".ward";
+
+// =============================================================================
+// ANSI colour palette — 24-bit escape codes via \x1b
+// =============================================================================
+
+const ESC: String = "\x1b";
+
+// Box-drawing characters as constants (avoid template interpolation issues)
+const BOX_H: String = "─";
+const BOX_V: String = "│";
+const BOX_TL: String = "┌";
+const BOX_TR: String = "┐";
+const BOX_BL: String = "└";
+const BOX_BR: String = "┘";
+const BOX_RTL: String = "╭";
+const BOX_RTR: String = "╮";
+const BOX_RBL: String = "╰";
+const BOX_RBR: String = "╯";
+const CHECK: String = "✓";
+const CROSS: String = "✗";
+const TRIANGLE: String = "▲";
+const ARROW: String = "▸";
+const DIAMOND: String = "◆";
+
+// =============================================================================
+// Formatting functions — Ward's visual language
+// =============================================================================
+
+fn sage_dark() -> String {
+    return ESC ++ "[38;2;61;79;68m";
+}
+
+fn sage_mid() -> String {
+    return ESC ++ "[38;2;90;122;98m";
+}
+
+fn sage_light() -> String {
+    return ESC ++ "[38;2;143;168;143m";
+}
+
+fn gold() -> String {
+    return ESC ++ "[38;2;212;160;23m";
+}
+
+fn gold_bright() -> String {
+    return ESC ++ "[38;2;240;192;64m";
+}
+
+fn reset() -> String {
+    return ESC ++ "[0m";
+}
+
+fn bold() -> String {
+    return ESC ++ "[1m";
+}
+
+fn dim() -> String {
+    return ESC ++ "[2m";
+}
+
+fn red() -> String {
+    return ESC ++ "[38;2;180;60;50m";
+}
+
+fn warm_white() -> String {
+    return ESC ++ "[38;2;220;215;200m";
+}
+
+fn styled(text: String, style: String) -> String {
+    if style == "gold" {
+        return gold() ++ text ++ reset();
+    } else if style == "bright" {
+        return gold_bright() ++ text ++ reset();
+    } else if style == "sage" {
+        return sage_mid() ++ text ++ reset();
+    } else if style == "sage_light" {
+        return sage_light() ++ text ++ reset();
+    } else if style == "sage_dark" {
+        return sage_dark() ++ text ++ reset();
+    } else if style == "warm" {
+        return warm_white() ++ text ++ reset();
+    } else if style == "dim" {
+        return dim() ++ sage_light() ++ text ++ reset();
+    } else if style == "bold" {
+        return bold() ++ warm_white() ++ text ++ reset();
+    } else if style == "bold_gold" {
+        return bold() ++ gold() ++ text ++ reset();
+    } else if style == "bold_bright" {
+        return bold() ++ gold_bright() ++ text ++ reset();
+    } else if style == "error" {
+        return bold() ++ red() ++ text ++ reset();
+    }
+    return text;
+}
+
+fn hr(width: Int) -> String {
+    let line = str_repeat(BOX_H, width);
+    return sage_dark() ++ line ++ reset();
+}
+
+fn header(title: String) -> String {
+    let bar = str_repeat(BOX_H, 3);
+    return "\n" ++ sage_mid() ++ BOX_RTL ++ bar ++ BOX_H ++ reset() ++ " " ++ bold() ++ gold() ++ title ++ reset() ++ " " ++ sage_mid() ++ BOX_H ++ bar ++ BOX_RTR ++ reset() ++ "\n";
+}
+
+fn footer() -> String {
+    let bar = str_repeat(BOX_H, 3);
+    return sage_mid() ++ BOX_RBL ++ bar ++ BOX_H ++ BOX_H ++ BOX_H ++ BOX_H ++ BOX_H ++ reset() ++ "\n";
+}
+
+fn status(label: String, msg: String) -> String {
+    return "  " ++ sage_dark() ++ BOX_V ++ reset() ++ " " ++ gold() ++ label ++ reset() ++ " " ++ sage_light() ++ msg ++ reset();
+}
+
+fn success(msg: String) -> String {
+    return "  " ++ sage_dark() ++ BOX_V ++ reset() ++ " " ++ gold_bright() ++ CHECK ++ reset() ++ " " ++ warm_white() ++ msg ++ reset();
+}
+
+fn failure(msg: String) -> String {
+    return "  " ++ sage_dark() ++ BOX_V ++ reset() ++ " " ++ red() ++ CROSS ++ reset() ++ " " ++ warm_white() ++ msg ++ reset();
+}
+
+fn warning(msg: String) -> String {
+    return "  " ++ sage_dark() ++ BOX_V ++ reset() ++ " " ++ gold() ++ TRIANGLE ++ reset() ++ " " ++ warm_white() ++ msg ++ reset();
+}
+
+fn ward_says(msg: String) -> String {
+    return "  " ++ sage_dark() ++ BOX_V ++ reset() ++ " " ++ gold() ++ ARROW ++ reset() ++ " " ++ bold() ++ warm_white() ++ "Ward" ++ reset() ++ sage_light() ++ ": " ++ msg ++ reset();
+}
+
+fn phase(number: Int, title: String) -> String {
+    return "\n  " ++ gold_bright() ++ DIAMOND ++ reset() ++ " " ++ bold() ++ gold() ++ "Phase " ++ str(number) ++ reset() ++ " " ++ sage_light() ++ BOX_H ++ " " ++ title ++ reset() ++ "\n";
+}
+
+fn indent_text(text: String, prefix: String) -> String {
+    let parts = lines(text);
+    let indented = map(parts, |line: String| "  " ++ sage_dark() ++ BOX_V ++ reset() ++ " " ++ prefix ++ line);
+    return join(indented, "\n");
+}
+
+fn banner(version: String) -> String {
+    let sd = sage_dark();
+    let r = reset();
+    let g = gold();
+    let gb = gold_bright();
+    let sm = sage_mid();
+    let sl = sage_light();
+    let b = bold();
+    let v = BOX_V;
+    let h42 = str_repeat(BOX_H, 42);
+    let sp42 = "                                          ";
+    let sp15 = "               ";
+
+    let l1 = sd ++ "  " ++ BOX_TL ++ h42 ++ BOX_TR ++ r;
+    let l2 = sd ++ "  " ++ v ++ r ++ sp42 ++ sd ++ v ++ r;
+    let l3 = sd ++ "  " ++ v ++ r ++ "  " ++ g ++ "          ___          " ++ r ++ sp15 ++ sd ++ v ++ r;
+    let l4 = sd ++ "  " ++ v ++ r ++ "  " ++ gb ++ "         (o,o)         " ++ r ++ sp15 ++ sd ++ v ++ r;
+    let l5 = sd ++ "  " ++ v ++ r ++ "  " ++ sm ++ '         \{`"' ++ "'" ++ '`\}         ' ++ r ++ sp15 ++ sd ++ v ++ r;
+    let l6 = sd ++ "  " ++ v ++ r ++ "  " ++ sd ++ '         -"-"-         ' ++ r ++ sp15 ++ sd ++ v ++ r;
+    let l7 = sd ++ "  " ++ v ++ r ++ sp42 ++ sd ++ v ++ r;
+    let l8 = sd ++ "  " ++ v ++ r ++ "  " ++ b ++ g ++ "  W A R D" ++ r ++ "  " ++ sl ++ "The Sage Coding Agent" ++ r ++ "   " ++ sd ++ v ++ r;
+    let l9 = sd ++ "  " ++ v ++ r ++ "  " ++ sd ++ "  v" ++ version ++ "                              " ++ r ++ sd ++ v ++ r;
+    let l10 = sd ++ "  " ++ v ++ r ++ sp42 ++ sd ++ v ++ r;
+    let l11 = sd ++ "  " ++ BOX_BL ++ h42 ++ BOX_BR ++ r;
+
+    return "\n" ++ join([l1, l2, l3, l4, l5, l6, l7, l8, l9, l10, l11], "\n") ++ "\n";
+}
+
+// =============================================================================
+// String parsing functions (pure — no Shell/Fs)
+// =============================================================================
+
+fn extract_shell_command(response: String) -> String {
+    let idx = str_index_of(response, "<<<SHELL:");
+    if is_none(idx) {
+        return "";
+    }
+    let offset = unwrap(idx) + 9;
+    let rest = str_slice(response, offset, str_len(response));
+    let end_idx = str_index_of(rest, ">>>");
+    if is_none(end_idx) {
+        return "";
+    }
+    return trim(str_slice(rest, 0, unwrap(end_idx)));
+}
+
+fn clean_response(response: String) -> String {
+    let result = response;
+
+    // Strip <<<SAVE:filename>>>...<<<END>>> blocks
+    loop {
+        let idx = str_index_of(result, "<<<SAVE:");
+        if is_none(idx) {
+            break;
+        }
+        let start_pos = unwrap(idx);
+        let rest = str_slice(result, start_pos, str_len(result));
+        let end_idx = str_index_of(rest, "<<<END>>>");
+        if is_none(end_idx) {
+            break;
+        }
+        let before = str_slice(result, 0, start_pos);
+        let after = str_slice(result, start_pos + unwrap(end_idx) + 9, str_len(result));
+        result = before ++ after;
+    }
+
+    // Strip <<<SHELL:command>>> markers
+    loop {
+        let idx = str_index_of(result, "<<<SHELL:");
+        if is_none(idx) {
+            break;
+        }
+        let start_pos = unwrap(idx);
+        let rest = str_slice(result, start_pos + 9, str_len(result));
+        let end_idx = str_index_of(rest, ">>>");
+        if is_none(end_idx) {
+            break;
+        }
+        let before = str_slice(result, 0, start_pos);
+        let after = str_slice(rest, unwrap(end_idx) + 3, str_len(rest));
+        result = before ++ after;
+    }
+
+    return trim(result);
+}
 
 fn show_commands() -> Unit {
     print("");
@@ -42,6 +253,10 @@ fn show_commands() -> Unit {
     print("");
 }
 
+// =============================================================================
+// Ward agent
+// =============================================================================
+
 agent Ward {
     use Shell, Fs
     @persistent session_count: Int
@@ -57,7 +272,8 @@ agent Ward {
         print(footer());
 
         loop {
-            let raw = prompt("  ▸");
+            print(styled("  " ++ ARROW, "bold_gold"));
+            let raw = try read_line() catch { "quit" };
             let input = trim(raw);
 
             if input == "" {
@@ -71,7 +287,9 @@ agent Ward {
                 show_commands();
             } else if input == "init" {
                 try Fs.write(WARD_DIR ++ "/config.toml", "# Ward configuration");
-                self.project_name.set(cwd());
+                let pwd_result = try Shell.run("pwd");
+                let working_dir = trim(pwd_result.stdout);
+                self.project_name.set(working_dir);
                 print("");
                 print(phase(1, "Initializing Ward"));
                 print(success("Created " ++ WARD_DIR));
@@ -80,28 +298,32 @@ agent Ward {
             } else if input == "scan" {
                 print("");
                 print(phase(1, "Scanning Project"));
-                print(status("target", cwd()));
+                let pwd_result = try Shell.run("pwd");
+                let working_dir = trim(pwd_result.stdout);
+                print(status("target", working_dir));
                 let result = try Shell.run("find . -maxdepth 2 -type f -not -path '*/target/*' -not -path '*/.git/*' | head -30");
                 print(header("Project Structure"));
-                print(indent(result.stdout, "  "));
+                print(indent_text(result.stdout, "  "));
                 print("");
             } else if input == "status" {
                 print("");
                 print(header("Ward Status"));
+                let pwd_result = try Shell.run("pwd");
+                let working_dir = trim(pwd_result.stdout);
                 print(status("sessions", "Session #" ++ str(self.session_count.get())));
                 print(status("project ", self.project_name.get()));
-                print(status("cwd     ", cwd()));
-                print(status("time    ", now_iso()));
+                print(status("cwd     ", working_dir));
+                print(status("time    ", format_timestamp(now_ms(), "%Y-%m-%dT%H:%M:%SZ")));
                 print("");
             } else if input == "clear" {
-                clear_screen();
+                print(ESC ++ "[2J" ++ ESC ++ "[H");
             } else {
                 print("");
                 print(ward_says("Pondering..."));
                 let context = self.conversation.get();
-                let working_dir = cwd();
+                let pwd_result = try Shell.run("pwd");
+                let working_dir = trim(pwd_result.stdout);
 
-                // Initial LLM call with tool instructions
                 self.pending_response.set(try divine("You are Ward, a wise and concise coding assistant owl running in a terminal on macOS. Working directory: {working_dir}\nCapabilities:\n- To run a shell command and see its output: <<<SHELL:command here>>>\n- To create or save a file: <<<SAVE:filename>>>\nfile content\n<<<END>>>\nIMPORTANT: When the user asks you to DO something (check a port, list files, install something, run a test), USE your tools. Do not just tell them what command to run — run it yourself. Be concise and direct.\n\nPrevious conversation:\n{context}\nUser: {input}") catch {
                     "The owl's wisdom is momentarily unavailable."
                 });
@@ -110,20 +332,54 @@ agent Ward {
                 let cmd = extract_shell_command(self.pending_response.get());
                 if cmd != "" {
                     print(status("shell ", cmd));
-                    let output = safe_shell_run(cmd);
+                    // Create a copy of cmd for Shell.run (original stays alive for divine template)
+                    let cmd_run = str_slice(cmd, 0, str_len(cmd));
+                    let shell_result = try Shell.run(cmd_run);
+                    let output = shell_result.stdout ++ shell_result.stderr;
                     let prior = self.pending_response.get();
                     self.pending_response.set(try divine("You are Ward. You ran the command: {cmd}\nOutput:\n{output}\n\nContext:\n{context}\nUser: {input}\nYour earlier thoughts: {prior}\n\nGive a concise final answer incorporating the command output. Use <<<SAVE:filename>>>...<<<END>>> if creating files.") catch {
                         prior ++ "\n\nCommand output:\n" ++ output
                     });
                 }
 
-                // Process file saves and display clean response
+                // Process file saves from response
                 let answer = self.pending_response.get();
-                let saved = save_files_from_response(answer);
-                let clean = clean_response(answer);
+                let clean = clean_response(str_slice(answer, 0, str_len(answer)));
+                let remaining = answer;
+                let save_messages: List<String> = [];
+                loop {
+                    let save_idx = str_index_of(remaining, "<<<SAVE:");
+                    if is_none(save_idx) {
+                        break;
+                    }
+                    let after_marker = str_slice(remaining, unwrap(save_idx) + 8, str_len(remaining));
+                    let name_end = str_index_of(after_marker, ">>>");
+                    if is_none(name_end) {
+                        break;
+                    }
+                    let filepath = trim(str_slice(after_marker, 0, unwrap(name_end)));
+                    let after_name = str_slice(after_marker, unwrap(name_end) + 3, str_len(after_marker));
+                    let end_idx = str_index_of(after_name, "<<<END>>>");
+                    if is_none(end_idx) {
+                        break;
+                    }
+                    let content = trim(str_slice(after_name, 0, unwrap(end_idx)));
+                    let save_msg = success("Saved " ++ filepath);
+                    let is_html = ends_with(filepath, ".html") || ends_with(filepath, ".htm");
+                    // Copy filepath before Fs.write moves it
+                    let filepath_copy = str_slice(filepath, 0, str_len(filepath));
+                    try Fs.write(filepath, content);
+                    save_messages = push(save_messages, save_msg);
+                    if is_html {
+                        try Shell.run("open " ++ filepath_copy);
+                        save_messages = push(save_messages, status("      ", "Opened in browser"));
+                    }
+                    remaining = str_slice(after_name, unwrap(end_idx) + 9, str_len(after_name));
+                }
+                let saved = join(save_messages, "\n");
 
                 print(header("Answer"));
-                print(indent(clean, "  "));
+                print(indent_text(clean, "  "));
                 if saved != "" {
                     print("");
                     print(saved);
