@@ -2,4 +2,5 @@
 /target/
 .ward/
 .env
-index.html
+*.html
+build_plan.md
