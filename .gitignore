@@ -1,5 +1,6 @@
 /hearth/
 /target/
+.sage/
 .ward/
 .env
 *.html
