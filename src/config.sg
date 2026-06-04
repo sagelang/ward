@@ -1,0 +1,17 @@
+// =============================================================================
+// config.sg — Ward's application constants
+// =============================================================================
+//
+// Shared by main.sg (the module root) and core.sg (the act-observe loop).
+// Kept in a leaf module so both can `use` them; Sage modules cannot import
+// from the entry file, so config has to live somewhere everyone can reach.
+
+pub const VERSION: String = "0.3.0";
+pub const WARD_DIR: String = ".ward";
+
+// The act-observe loop is hard-capped so a confused model can't spin forever.
+pub const MAX_STEPS: Int = 12;
+
+// Per-observation truncation budgets, to protect the context window.
+pub const OBS_LIMIT: Int = 4000;
+pub const READ_LIMIT: Int = 6000;

@@ -1,0 +1,258 @@
+// =============================================================================
+// core.sg — the Ward agent and its act-observe loop
+// =============================================================================
+//
+// Named `core`, not `agent`: `agent` is a reserved keyword in Sage (it declares
+// an agent), so it cannot be a module name. `agent Ward` below is the keyword
+// in its proper place.
+//
+// This is the whole agent: a REPL shell wrapping a bounded act-observe loop.
+// Each iteration asks the model for ONE action (decoded by proto.sg),
+// executes it against the Fs/Shell tools, records a structured observation,
+// and repeats until the model emits <finish> or MAX_STEPS is hit.
+//
+// The Fs/Shell-touching executors live here by necessity: tool use requires an
+// agent-scoped `use` declaration (RFC-0011 §17.4), so they cannot move into a
+// pure module. Everything they lean on — decoding, formatting, diffing, the
+// permission prompt — is imported from the pure modules below.
+
+use config::*;
+use ui::*;
+use proto::*;
+use tools::*;
+
+pub agent Ward {
+    use Shell, Fs
+    @persistent session_count: Int
+    @persistent project_name: String
+    @persistent history: List<String>
+    @persistent auto: Bool
+
+    on start {
+        self.session_count.set(self.session_count.get() + 1);
+        self.history.set([]);
+        self.auto.set(false);
+        print(banner(VERSION));
+        print(ward_says("Ready when you are, Chief. Type " ++ styled("help", "gold") ++ " for commands."));
+        print(footer());
+
+        loop {
+            print(styled("  " ++ ARROW, "bold_gold"));
+            let raw = try read_line() catch { "quit" };
+            let input = trim(raw);
+
+            if input == "" {
+                // skip empty input
+            } else if input == "exit" || input == "quit" || input == "q" {
+                print("");
+                print(ward_says("Until next time, Chief."));
+                print(footer());
+                break;
+            } else if input == "help" || input == "?" {
+                show_commands();
+            } else if input == "auto on" {
+                self.auto.set(true);
+                print(ward_says("Auto-approve " ++ styled("ON", "bright") ++ " — I'll act without asking. Careful out there."));
+            } else if input == "auto off" {
+                self.auto.set(false);
+                print(ward_says("Auto-approve " ++ styled("OFF", "gold") ++ " — I'll ask before running commands or editing."));
+            } else if input == "init" {
+                try Fs.write(WARD_DIR ++ "/config.toml", "# Ward configuration");
+                let pwd_result = try Shell.run("pwd");
+                let working_dir = trim(pwd_result.stdout);
+                self.project_name.set(working_dir);
+                print("");
+                print(success("Created " ++ WARD_DIR));
+                print(ward_says("I shall keep watch over this project."));
+                print("");
+            } else if input == "scan" {
+                print("");
+                let pwd_result = try Shell.run("pwd");
+                let working_dir = trim(pwd_result.stdout);
+                print(status("target", working_dir));
+                let result = try Shell.run("find . -maxdepth 2 -type f -not -path '*/target/*' -not -path '*/.git/*' | head -30");
+                print(header("Project Structure"));
+                print(indent_text(result.stdout, "  "));
+                print("");
+            } else if input == "status" {
+                print("");
+                print(header("Ward Status"));
+                let pwd_result = try Shell.run("pwd");
+                let working_dir = trim(pwd_result.stdout);
+                let auto_label = "off";
+                if self.auto.get() {
+                    auto_label = "on";
+                }
+                print(status("sessions", "Session #" ++ str(self.session_count.get())));
+                print(status("project ", self.project_name.get()));
+                print(status("cwd     ", working_dir));
+                print(status("auto    ", auto_label));
+                print(status("time    ", format_timestamp(now_ms(), "%Y-%m-%dT%H:%M:%SZ")));
+                print("");
+            } else if input == "clear" {
+                print(ESC ++ "[2J" ++ ESC ++ "[H");
+            } else {
+                // ---------------------------------------------------------------
+                // Agentic loop: act -> observe -> act, until <finish>.
+                // ---------------------------------------------------------------
+                self.history.set(push(self.history.get(), "USER: " ++ input));
+                print("");
+                print(ward_says("Working..."));
+
+                let pwd_result = try Shell.run("pwd");
+                let working_dir = trim(pwd_result.stdout);
+
+                let step = 0;
+                loop {
+                    step = step + 1;
+                    if step > MAX_STEPS {
+                        print(warning("Step limit reached — stopping. Ask me to continue if you like."));
+                        break;
+                    }
+
+                    let transcript = join(self.history.get(), "\n\n");
+                    let wd = dup(working_dir);
+                    // `divine` requires a string-literal template (it is a keyword,
+                    // not a function — see proto.sg), so the protocol prompt is
+                    // inlined here with {wd}/{transcript} interpolation rather than
+                    // built by a helper and passed in.
+                    let resp = try divine("You are Ward, a precise terminal coding agent built in the Sage language. You operate in working directory: {wd} on a Unix shell.\n\nRespond with EXACTLY ONE action per reply, as a single tag, with nothing else outside it:\n  <read>PATH</read>            read a file (you get it back with line numbers)\n  <list>PATH</list>            list a directory (use \".\" for the current one)\n  <search>QUERY</search>       grep the project for a string\n  <bash>COMMAND</bash>         run a shell command\n  <write>...</write>           create/overwrite a file: first line is the PATH, the rest is the full content\n  <edit>...</edit>             change part of a file: first line is the PATH, then a <old>EXACT TEXT</old> block and a <new>REPLACEMENT</new> block\n  <finish>MESSAGE</finish>     the task is done; give the user your final answer\n\nRules:\n- ALWAYS <read> a file before you <edit> it.\n- In <edit>, the <old> text must appear EXACTLY ONCE in the file. Include enough surrounding lines to be unique.\n- Prefer <edit> over <write> for files that already exist.\n- Take real actions instead of telling the user what to run. Keep going until the task is complete, then <finish>.\n\nTranscript so far:\n{transcript}\n") catch {
+                        "<finish>The owl's wisdom is momentarily unavailable.</finish>"
+                    };
+
+                    let action = first_tool(resp);
+                    let obs = "";
+
+                    if action == "finish" || action == "" {
+                        let msg = trim(resp);
+                        if action == "finish" {
+                            msg = trim(tag_body(resp, "finish"));
+                        }
+                        print(header("Ward"));
+                        print(indent_text(msg, "  "));
+                        print("");
+                        self.history.set(push(self.history.get(), "WARD: " ++ msg));
+                        break;
+                    } else if action == "read" {
+                        let path = trim(first_line(tag_body(resp, "read")));
+                        print(status("read  ", path));
+                        let exists = try Fs.exists(dup(path)) catch { false };
+                        if exists {
+                            let content = try Fs.read(dup(path)) catch { "" };
+                            obs = "Contents of " ++ path ++ ":\n" ++ truncate(number_lines(content), READ_LIMIT);
+                        } else {
+                            obs = "Error: no such file: " ++ path;
+                            print(failure(obs));
+                        }
+                    } else if action == "list" {
+                        let raw_path = trim(first_line(tag_body(resp, "list")));
+                        let path = ".";
+                        if raw_path != "" {
+                            path = dup(raw_path);
+                        }
+                        print(status("list  ", path));
+                        let items = try Fs.list(dup(path)) catch { [] };
+                        obs = "Directory " ++ path ++ ":\n" ++ truncate(join(items, "\n"), OBS_LIMIT);
+                    } else if action == "search" {
+                        let query = trim(tag_body(resp, "search"));
+                        print(status("search", query));
+                        let cmd = "grep -rn --color=never " ++ shell_quote(dup(query)) ++ " . 2>/dev/null | head -50";
+                        let result = try Shell.run(cmd);
+                        obs = "Search results for " ++ query ++ ":\n" ++ truncate(result.stdout, OBS_LIMIT);
+                    } else if action == "bash" {
+                        let cmd = trim(tag_body(resp, "bash"));
+                        let approved = self.auto.get();
+                        if !approved {
+                            print(confirm_prompt("Run: " ++ cmd));
+                            approved = is_yes(try read_line() catch { "n" });
+                        }
+                        if approved {
+                            print(status("bash  ", cmd));
+                            let result = try Shell.run(dup(cmd));
+                            let combined = result.stdout ++ result.stderr;
+                            obs = "$ " ++ cmd ++ "\n(exit " ++ str(result.exit_code) ++ ")\n" ++ truncate(combined, OBS_LIMIT);
+                        } else {
+                            obs = "User declined to run: " ++ cmd;
+                            print(warning("Skipped."));
+                        }
+                    } else if action == "write" {
+                        let body = tag_body(resp, "write");
+                        let path = trim(first_line(body));
+                        let content = strip_edge_newlines(drop_first_line(body));
+                        print(header("write " ++ path));
+                        print(indent_text(truncate(dup(content), 1500), styled("", "dim")));
+                        let approved = self.auto.get();
+                        if !approved {
+                            // `byte_count` is bound separately: `str(str_len(content))`
+                            // inline mis-compiles (the `as i64` cast lands next to a
+                            // `.to_string()` without parens). See RFC-0024 notes.
+                            let byte_count = str_len(content);
+                            print(confirm_prompt("Write " ++ str(byte_count) ++ " bytes to " ++ path ++ "?"));
+                            approved = is_yes(try read_line() catch { "n" });
+                        }
+                        if approved {
+                            let is_html = ends_with(path, ".html") || ends_with(path, ".htm");
+                            try Fs.write(dup(path), dup(content));
+                            obs = "Wrote " ++ path;
+                            print(success(obs));
+                            if is_html {
+                                try Shell.run("open " ++ dup(path));
+                            }
+                        } else {
+                            obs = "User declined to write " ++ path;
+                            print(warning("Skipped."));
+                        }
+                    } else if action == "edit" {
+                        let body = tag_body(resp, "edit");
+                        let path = trim(first_line(body));
+                        let old_text = strip_edge_newlines(tag_body(body, "old"));
+                        let new_text = strip_edge_newlines(tag_body(body, "new"));
+                        let exists = try Fs.exists(dup(path)) catch { false };
+                        if !exists {
+                            obs = "Error: no such file: " ++ path;
+                            print(failure(obs));
+                        } else {
+                            let original = try Fs.read(dup(path)) catch { "" };
+                            let hits = count_occurrences(original, old_text);
+                            if hits == 0 {
+                                obs = "Error: <old> text not found in " ++ path ++ ". Re-read the file and copy the exact text.";
+                                print(failure(obs));
+                            } else if hits > 1 {
+                                obs = "Error: <old> matches " ++ str(hits) ++ " places in " ++ path ++ ". Add more context to make it unique.";
+                                print(failure(obs));
+                            } else {
+                                print(header("edit " ++ path));
+                                print(render_diff(dup(old_text), dup(new_text)));
+                                print("");
+                                let approved = self.auto.get();
+                                if !approved {
+                                    print(confirm_prompt("Apply this edit to " ++ path ++ "?"));
+                                    approved = is_yes(try read_line() catch { "n" });
+                                }
+                                if approved {
+                                    let updated = replace_first(original, old_text, new_text);
+                                    try Fs.write(dup(path), updated);
+                                    obs = "Edited " ++ path;
+                                    print(success(obs));
+                                } else {
+                                    obs = "User declined the edit to " ++ path;
+                                    print(warning("Skipped."));
+                                }
+                            }
+                        }
+                    }
+
+                    self.history.set(push(self.history.get(), "WARD did [" ++ action ++ "]:\n" ++ obs));
+                }
+            }
+        }
+
+        yield(0);
+    }
+
+    on error(e) {
+        print(failure("Ward encountered an error."));
+        print(footer());
+        yield(1);
+    }
+}

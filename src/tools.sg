@@ -1,0 +1,55 @@
+// =============================================================================
+// tools.sg — pure helpers for tool execution & observation formatting
+// =============================================================================
+//
+// These shape what the tools return and what the model sees: line-numbered
+// reads, truncated observations, occurrence counting for the unique-match edit
+// contract, and shell-safe quoting. All pure — no Fs/Shell — so the agent body
+// stays thin and these stay unit-testable.
+
+use ui::sage_dark;
+use ui::reset;
+
+// Prefix each line with its 1-based number (dim), for `read` output.
+pub fn number_lines(s: String) -> String {
+    let ls = lines(s);
+    let out: List<String> = [];
+    let n = 1;
+    for line in ls {
+        out = push(out, sage_dark() ++ str(n) ++ reset() ++ " " ++ line);
+        n = n + 1;
+    }
+    return join(out, "\n");
+}
+
+// Clip an observation to `max` chars, with a visible marker.
+pub fn truncate(s: String, max: Int) -> String {
+    if str_len(s) <= max {
+        return s;
+    }
+    return str_slice(s, 0, max) ++ "\n... (truncated)";
+}
+
+// Count non-overlapping occurrences of needle in hay. Drives the edit
+// unique-match contract (0 -> not found, >1 -> ambiguous).
+pub fn count_occurrences(hay: String, needle: String) -> Int {
+    if needle == "" {
+        return 0;
+    }
+    let count = 0;
+    let rest = hay;
+    loop {
+        let i = str_index_of(rest, needle);
+        if is_none(i) {
+            break;
+        }
+        count = count + 1;
+        rest = str_slice(rest, unwrap(i) + str_len(needle), str_len(rest));
+    }
+    return count;
+}
+
+// Single-quote a string for safe use inside a shell command.
+pub fn shell_quote(s: String) -> String {
+    return "'" ++ replace(s, "'", "'\\''") ++ "'";
+}

@@ -1,0 +1,99 @@
+// =============================================================================
+// proto.sg — the decision channel (tag protocol, v0.3.0 bootstrap)
+// =============================================================================
+//
+// Named `proto`, not `protocol`: `protocol` is a reserved keyword in Sage, so
+// it cannot be used as a module name (`mod protocol;` silently swallows itself
+// and every later `mod` in the file).
+//
+// The model emits EXACTLY ONE action per reply as a single tag block. This
+// module is the pure decoder for that protocol — selecting which tool was
+// requested (`first_tool`) and extracting its payload (`tag_body`) — plus the
+// system/protocol prompt the model is given (`build_prompt`).
+//
+// Per RFC-0024 §5.2, this tag protocol is the shipping bootstrap; the target
+// is `Oracle<ToolAction>` structured output. The loop in core.sg depends only
+// on these decoders, so that migration is local to this file.
+
+// Clone a string so the original survives a *consuming* call (Fs.write /
+// Shell.run / Fs.read move their String argument). A real constraint, honoured
+// throughout the codebase.
+pub fn dup(s: String) -> String {
+    return str_slice(s, 0, str_len(s));
+}
+
+pub fn first_line(s: String) -> String {
+    let i = str_index_of(s, "\n");
+    if is_none(i) {
+        return s;
+    }
+    return str_slice(s, 0, unwrap(i));
+}
+
+pub fn drop_first_line(s: String) -> String {
+    let i = str_index_of(s, "\n");
+    if is_none(i) {
+        return "";
+    }
+    return str_slice(s, unwrap(i) + 1, str_len(s));
+}
+
+// Remove exactly one leading and one trailing newline (preserves inner
+// whitespace, which matters for exact <old> matching in edits).
+pub fn strip_edge_newlines(s: String) -> String {
+    let r = s;
+    if starts_with(r, "\n") {
+        r = str_slice(r, 1, str_len(r));
+    }
+    if ends_with(r, "\n") {
+        r = str_slice(r, 0, str_len(r) - 1);
+    }
+    return r;
+}
+
+// Content between <tag> and </tag>; "" if the opening tag is absent.
+pub fn tag_body(s: String, tag: String) -> String {
+    let open = "<" ++ tag ++ ">";
+    let close = "</" ++ tag ++ ">";
+    let oi = str_index_of(s, open);
+    if is_none(oi) {
+        return "";
+    }
+    let body_start = unwrap(oi) + str_len(open);
+    let rest = str_slice(s, body_start, str_len(s));
+    let ci = str_index_of(rest, close);
+    if is_none(ci) {
+        return strip_edge_newlines(rest);
+    }
+    return strip_edge_newlines(str_slice(rest, 0, unwrap(ci)));
+}
+
+pub fn tag_index(s: String, tag: String) -> Int {
+    let i = str_index_of(s, "<" ++ tag ++ ">");
+    if is_none(i) {
+        return 1000000000;
+    }
+    return unwrap(i);
+}
+
+// Returns the name of the first tool tag that appears in the response, or "".
+pub fn first_tool(s: String) -> String {
+    let best = "";
+    let best_at = 1000000000;
+    let names = ["read", "list", "search", "bash", "write", "edit", "finish"];
+    for name in names {
+        let at = tag_index(s, name);
+        if at < best_at {
+            best_at = at;
+            best = name;
+        }
+    }
+    return best;
+}
+
+// NOTE: the system/protocol prompt itself is NOT built here. `divine` is a Sage
+// keyword that only accepts a string-LITERAL template (with `{...}`
+// interpolation), not a `String` value — so the prompt cannot be assembled in a
+// helper and passed in. It is therefore inlined at the `divine` call site in
+// core.sg. A future Sage improvement allowing `divine(expr)` would let the
+// prompt move back here as a pure, testable `build_prompt(...)` function.
