@@ -147,6 +147,12 @@ pub agent Ward {
                     print(status("context", "read " ++ doc_name));
                 }
 
+                // Paths read during this task. `write` will not clobber a file
+                // that is not in here: read-before-overwrite, the same contract
+                // `edit` already has. A model that has not read a file cannot
+                // know what it is destroying.
+                let read_paths: List<String> = [];
+
                 let step = 0;
                 loop {
                     step = step + 1;
@@ -167,7 +173,7 @@ pub agent Ward {
                     // not a function — see proto.sg), so the protocol prompt is
                     // inlined here with {env_block}/{transcript} interpolation rather than
                     // built by a helper and passed in.
-                    let resp = try divine("You are Ward, a precise terminal coding agent built in the Sage language. You are working on a Unix shell, in the project described below.\n\n{env_block}\nRespond with EXACTLY ONE action per reply, as a single tag, with nothing else outside it:\n  <read>PATH</read>            read a file (you get it back with line numbers)\n                               for a long file, put <from>N</from> and <lines>N</lines> on the lines after the path\n  <list>PATH</list>            list a directory (use \".\" for the current one)\n  <glob>PATTERN</glob>         find files by name, e.g. <glob>*.sg</glob>\n  <search>QUERY</search>       search file contents; add <in>PATH</in> and <files>*.sg</files> to narrow it\n  <bash>COMMAND</bash>         run a shell command\n  <write>...</write>           create/overwrite a file: first line is the PATH, the rest is the full content\n  <edit>...</edit>             change part of a file: first line is the PATH, then a <old>EXACT TEXT</old> block and a <new>REPLACEMENT</new> block\n  <finish>MESSAGE</finish>     the task is done; give the user your final answer\n\nRules:\n- ALWAYS <read> a file before you <edit> it.\n- In <edit>, the <old> text must appear EXACTLY ONCE in the file. Include enough surrounding lines to be unique, or add an <all> tag to change every occurrence deliberately.\n- Prefer <edit> over <write> for files that already exist.\n- The file list above is the project. Read from it rather than guessing at paths, and do not re-list directories it already shows you.\n- Use paths relative to the working directory, exactly as they appear in that list. Never write out the absolute path.\n- Follow any project instructions given above; they outrank your own habits.\n- Match the conventions of the code you are editing rather than importing your own.\n- Take real actions instead of telling the user what to run. Keep going until the task is complete, then <finish>.\n\nTranscript so far:\n{transcript}\n") catch(e) { "<ward-error>" ++ str(e) ++ "</ward-error>" };
+                    let resp = try divine("You are Ward, a precise terminal coding agent built in the Sage language. You are working on a Unix shell, in the project described below.\n\n{env_block}\nRespond with EXACTLY ONE action per reply, as a single tag, with nothing else outside it:\n  <read>PATH</read>            read a file (you get it back with line numbers)\n                               for a long file, put <from>N</from> and <lines>N</lines> on the lines after the path\n  <list>PATH</list>            list a directory (use \".\" for the current one)\n  <glob>PATTERN</glob>         find files by name, e.g. <glob>*.sg</glob>\n  <search>QUERY</search>       search file contents; add <in>PATH</in> and <files>*.sg</files> to narrow it\n  <bash>COMMAND</bash>         run a shell command\n  <write>...</write>           create/overwrite a file: first line is the PATH, the rest is the full content\n  <edit>...</edit>             change part of a file: first line is the PATH, then a <old>EXACT TEXT</old> block and a <new>REPLACEMENT</new> block\n  <finish>MESSAGE</finish>     the task is done; give the user your final answer\n\nRules:\n- ALWAYS <read> a file before you <edit> it.\n- In <edit>, the <old> text must appear EXACTLY ONCE in the file. Include enough surrounding lines to be unique, or add an <all> tag to change every occurrence deliberately.\n- <write> is for NEW files. It replaces a whole file, so to change one that exists you must <read> it and then <edit> it; Ward will refuse a <write> over a file you have not read.\n- Never claim you ran a command unless a <bash> observation for it appears above. If you have not verified something, say that you have not.\n- The file list above is the project. Read from it rather than guessing at paths, and do not re-list directories it already shows you.\n- Use paths relative to the working directory, exactly as they appear in that list. Never write out the absolute path.\n- Follow any project instructions given above; they outrank your own habits.\n- Match the conventions of the code you are editing rather than importing your own.\n- Take real actions instead of telling the user what to run. Keep going until the task is complete, then <finish>.\n\nTranscript so far:\n{transcript}\n") catch(e) { "<ward-error>" ++ str(e) ++ "</ward-error>" };
 
                     // Say what actually went wrong. The previous version replaced
                     // every failure with one cute sentence, which hid a precise,
@@ -210,6 +216,7 @@ pub agent Ward {
                             let window = slice_lines(content, from, want);
                             let shown = line_count(window);
                             let last = from + shown - 1;
+                            read_paths = push(read_paths, dup(path));
                             obs = "Contents of " ++ path ++ ":\n"
                                 ++ truncate(number_lines_from(window, from), READ_LIMIT)
                                 ++ read_footer(dup(path), from, last, total);
@@ -307,7 +314,24 @@ pub agent Ward {
                         let body = tag_body(resp, "write");
                         let path = trim(first_line(body));
                         let content = strip_edge_newlines(drop_first_line(body));
-                        print(header("write " ++ short_path(dup(path), dup(working_dir))));
+                        let shown = short_path(dup(path), dup(working_dir));
+                        let target_exists = try Fs.exists(dup(path)) catch { false };
+                        let seen = list_contains(read_paths, dup(path));
+
+                        // Two refusals, both learned the hard way. A local model
+                        // asked to add a test wrote it into an unrelated file it
+                        // had never read, replacing 380 lines of existing tests,
+                        // and then wrote 0 bytes to the same file. Both were
+                        // approved, because "Write 271 bytes to X?" gives the user
+                        // nothing to object to.
+                        if trim(content) == "" {
+                            obs = "Refused: <write> with empty content for " ++ shown ++ ". Ward will not truncate a file to nothing.";
+                            print(failure(obs));
+                        } else if target_exists && !seen {
+                            obs = "Refused: " ++ shown ++ " already exists and you have not read it in this task. <read> it first, then <edit> the part you want to change. <write> replaces the whole file.";
+                            print(failure(obs));
+                        } else {
+                        print(header("write " ++ dup(shown)));
                         print(indent_text(truncate(dup(content), 1500), styled("", "dim")));
                         let approved = self.auto.get();
                         if !approved {
@@ -315,7 +339,14 @@ pub agent Ward {
                             // inline mis-compiles (the `as i64` cast lands next to a
                             // `.to_string()` without parens). See RFC-0024 notes.
                             let byte_count = str_len(content);
-                            print(confirm_prompt("Write " ++ str(byte_count) ++ " bytes to " ++ short_path(dup(path), dup(working_dir)) ++ "?"));
+                            let question = "Write " ++ str(byte_count) ++ " bytes to " ++ dup(shown) ++ "?";
+                            if target_exists {
+                                let doomed = try Fs.read(dup(path)) catch { "" };
+                                let losing = line_count(doomed);
+                                print(warning("This REPLACES " ++ str(losing) ++ " existing lines in " ++ dup(shown) ++ "."));
+                                question = "OVERWRITE " ++ dup(shown) ++ ", discarding its current contents?";
+                            }
+                            print(confirm_prompt(question));
                             approved = is_yes(try read_line() catch { "n" });
                         }
                         if approved {
@@ -337,6 +368,7 @@ pub agent Ward {
                         } else {
                             obs = "User declined to write " ++ path;
                             print(warning("Skipped."));
+                        }
                         }
                     } else if action == "edit" {
                         let body = tag_body(resp, "edit");
