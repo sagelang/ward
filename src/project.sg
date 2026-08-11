@@ -68,6 +68,27 @@ pub fn fact(label: String, value: String) -> String {
     return label ++ ": " ++ value ++ "\n";
 }
 
+// Whether a path stays inside the project.
+//
+// Deliberately conservative and deliberately simple: an absolute path must sit
+// under the working directory, and `..` is refused outright rather than
+// resolved. This does not follow symlinks, so it is a fence rather than a
+// sandbox, and the honest description is "stops the obvious mistake" rather
+// than "contains a determined escape".
+pub fn is_inside_project(path: String, cwd: String) -> Bool {
+    let p = trim(path);
+    if str_contains(p, "..") {
+        return false;
+    }
+    if starts_with(p, "~") {
+        return false;
+    }
+    if starts_with(p, "/") {
+        return starts_with(p, cwd ++ "/");
+    }
+    return true;
+}
+
 // The environment block. `branch` is empty when the cwd is not a git working
 // tree, in which case the git sections drop out and the tree comes from `find`
 // rather than `git ls-files`, which the caller has already sorted out.

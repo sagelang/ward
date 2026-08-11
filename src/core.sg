@@ -31,10 +31,19 @@ pub agent Ward {
 
     on start {
         self.session_count.set(self.session_count.get() + 1);
-        self.history.set([]);
         self.auto.set(false);
         print(banner(VERSION));
-        print(ward_says("Ready when you are, Chief. Type " ++ styled("help", "gold") ++ " for commands."));
+
+        // The transcript is `@persistent` and the agent is a Transient child, so
+        // a mid-task crash restarts the agent and comes straight back here.
+        // Clearing the history at this point, as Ward used to, threw away the
+        // very thing persistence was for: it restarted, it never resumed.
+        let carried = len(self.history.get());
+        if carried > 0 {
+            print(ward_says("Picking up where we left off: " ++ str(carried) ++ " earlier entries. Type " ++ styled("reset", "gold") ++ " to start clean."));
+        } else {
+            print(ward_says("Ready when you are, Chief. Type " ++ styled("help", "gold") ++ " for commands."));
+        }
         print(footer());
 
         loop {
@@ -90,6 +99,9 @@ pub agent Ward {
                 print(status("auto    ", auto_label));
                 print(status("time    ", format_timestamp(now_ms(), "%Y-%m-%dT%H:%M:%SZ")));
                 print("");
+            } else if input == "reset" {
+                self.history.set([]);
+                print(ward_says("Transcript cleared. Fresh start."));
             } else if input == "clear" {
                 print(ESC ++ "[2J" ++ ESC ++ "[H");
             } else {
@@ -152,6 +164,22 @@ pub agent Ward {
                 // `edit` already has. A model that has not read a file cannot
                 // know what it is destroying.
                 let read_paths: List<String> = [];
+
+                // Commands the user has blessed for good, one per line in
+                // .ward/allow. A plain text file rather than a config format so
+                // it can be read, edited and audited without Ward's help: the
+                // whole point of an allowlist is that you can see what is on it.
+                let allowlist: List<String> = [];
+                let allow_file = WARD_DIR ++ "/allow";
+                let has_allow = try Fs.exists(dup(allow_file)) catch { false };
+                if has_allow {
+                    let allow_raw = try Fs.read(dup(allow_file)) catch { "" };
+                    for entry in lines(allow_raw) {
+                        if trim(entry) != "" {
+                            allowlist = push(allowlist, trim(entry));
+                        }
+                    }
+                }
 
                 let step = 0;
                 loop {
@@ -297,9 +325,19 @@ pub agent Ward {
                     } else if action == "bash" {
                         let cmd = trim(tag_body(resp, "bash"));
                         let approved = self.auto.get();
+                        if !approved && list_contains(allowlist, dup(cmd)) {
+                            approved = true;
+                            print(status("allowed", "previously approved: " ++ dup(cmd)));
+                        }
                         if !approved {
-                            print(confirm_prompt("Run: " ++ cmd));
-                            approved = is_yes(try read_line() catch { "n" });
+                            print(confirm_prompt_always("Run: " ++ dup(cmd)));
+                            let answer = try read_line() catch { "n" };
+                            approved = is_yes(dup(answer));
+                            if is_always(answer) {
+                                allowlist = push(allowlist, dup(cmd));
+                                try Fs.write(dup(allow_file), join(allowlist, "\n") ++ "\n");
+                                print(success("Added to " ++ dup(allow_file) ++ ". Delete the line to revoke."));
+                            }
                         }
                         if approved {
                             print(status("bash  ", cmd));
@@ -324,7 +362,10 @@ pub agent Ward {
                         // and then wrote 0 bytes to the same file. Both were
                         // approved, because "Write 271 bytes to X?" gives the user
                         // nothing to object to.
-                        if trim(content) == "" {
+                        if !is_inside_project(dup(path), dup(working_dir)) {
+                            obs = "Refused: " ++ shown ++ " is outside the project. Ward only writes under " ++ dup(working_dir) ++ ".";
+                            print(failure(obs));
+                        } else if trim(content) == "" {
                             obs = "Refused: <write> with empty content for " ++ shown ++ ". Ward will not truncate a file to nothing.";
                             print(failure(obs));
                         } else if target_exists && !seen {
@@ -376,7 +417,10 @@ pub agent Ward {
                         let old_text = strip_edge_newlines(tag_body(body, "old"));
                         let new_text = strip_edge_newlines(tag_body(body, "new"));
                         let exists = try Fs.exists(dup(path)) catch { false };
-                        if !exists {
+                        if !is_inside_project(dup(path), dup(working_dir)) {
+                            obs = "Refused: " ++ path ++ " is outside the project. Ward only edits under " ++ dup(working_dir) ++ ".";
+                            print(failure(obs));
+                        } else if !exists {
                             obs = "Error: no such file: " ++ path;
                             print(failure(obs));
                         } else {
