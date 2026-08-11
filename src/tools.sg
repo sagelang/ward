@@ -190,6 +190,16 @@ pub fn compact_history(entries: List<String>, budget: Int, keep_recent: Int) -> 
     return marked;
 }
 
+pub fn list_contains(items: List<String>, needle: String) -> Bool {
+    let found = false;
+    for item in items {
+        if item == needle {
+            found = true;
+        }
+    }
+    return found;
+}
+
 // Single-quote a string for safe use inside a shell command.
 pub fn shell_quote(s: String) -> String {
     return "'" ++ replace(s, "'", "'\\''") ++ "'";

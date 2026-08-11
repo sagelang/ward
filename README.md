@@ -43,6 +43,7 @@ It is a genuine **act → observe → act** loop, not a single-shot assistant. T
 - **A real tool layer** — `read` (whole file or a line window), `list`, `glob`, `search`, `bash`, `write`, `edit`. Inside a repository, `glob` and `search` go through git, so they never spend their budget on `target/` or anything else you have gitignored.
 - **Surgical edits** — read-before-edit, unique-match replacement with a printed red/green diff. Never a blind whole-file clobber. An explicit `<all>` opts into replacing every occurrence, with the count in the confirmation.
 - **Permission by default** — every side-effecting action (`edit`/`write`/`bash`) shows a preview and asks `[y/N]`. Opt into `auto` mode for trusted, fast iteration.
+- **Read before you overwrite** — `write` is for new files. Over an existing one it is refused unless Ward has read it in this task, and the prompt then names how many lines are about to be discarded. Empty writes are refused outright.
 - **Structured memory** — a typed transcript of actions and observations, truncated per-entry to protect the context window.
 - **Pure Sage** — no Rust FFI, no SDK. `grove.toml` is clean: the entire I/O surface is the `Fs` and `Shell` tools.
 - **Crash-safe** — runs as a `Transient` child under a `OneForOne` supervisor; a mid-task crash restarts the agent, not the process. Session state is `@persistent`.
