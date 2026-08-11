@@ -30,6 +30,24 @@ pub fn is_blank(s: String) -> Bool {
     return trim(s) == "";
 }
 
+// A path as it should appear on screen: relative to the working directory.
+//
+// The model is told to use relative paths, but display cannot depend on it
+// complying. Against a real model the absolute form ran the `[y/N]` prompt onto
+// a second line, which is the one line a user has to read before approving a
+// write.
+pub fn short_path(path: String, cwd: String) -> String {
+    let prefix = cwd ++ "/";
+    let cut = str_len(prefix);
+    if starts_with(path, prefix) {
+        return str_slice(path, cut, str_len(path));
+    }
+    if starts_with(path, "./") {
+        return str_slice(path, 2, str_len(path));
+    }
+    return path;
+}
+
 // A labelled block, omitted entirely when there is nothing to say. An empty
 // section is worse than no section: it invites the model to conclude something
 // definite from missing data.
