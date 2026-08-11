@@ -68,6 +68,51 @@ pub fn tag_body(s: String, tag: String) -> String {
     return strip_edge_newlines(str_slice(rest, 0, unwrap(ci)));
 }
 
+// Whether a tag is present at all, for the flag-shaped ones like <all>.
+pub fn has_tag(s: String, tag: String) -> Bool {
+    return !is_none(str_index_of(s, "<" ++ tag ++ ">"));
+}
+
+// A non-negative integer, or `fallback` if the string is not one.
+//
+// Hand-rolled rather than `parse_int`: that returns a `Result`, and wrapping it
+// in `try … catch` inside a pure function trips E014 ("try used in non-fallible
+// context") while the catch arm is checked against `Result<Int, String>` rather
+// than `Int`. Marking the function `fails` runs into the codegen bug in note 2.
+// Digits are cheaper than the argument.
+pub fn parse_digits(s: String, fallback: Int) -> Int {
+    let t = trim(s);
+    let total = str_len(t);
+    if total == 0 {
+        return fallback;
+    }
+    let n = 0;
+    let i = 0;
+    let ok = true;
+    loop {
+        if i >= total {
+            break;
+        }
+        let ch = str_slice(t, i, i + 1);
+        let d = str_index_of("0123456789", ch);
+        if is_none(d) {
+            ok = false;
+            break;
+        }
+        n = n * 10 + unwrap(d);
+        i = i + 1;
+    }
+    if !ok {
+        return fallback;
+    }
+    return n;
+}
+
+// An Int carried in a tag, or `fallback` when it is missing or not a number.
+pub fn tag_int(s: String, tag: String, fallback: Int) -> Int {
+    return parse_digits(tag_body(s, tag), fallback);
+}
+
 pub fn tag_index(s: String, tag: String) -> Int {
     let i = str_index_of(s, "<" ++ tag ++ ">");
     if is_none(i) {
@@ -80,7 +125,7 @@ pub fn tag_index(s: String, tag: String) -> Int {
 pub fn first_tool(s: String) -> String {
     let best = "";
     let best_at = 1000000000;
-    let names = ["read", "list", "search", "bash", "write", "edit", "finish"];
+    let names = ["read", "list", "glob", "search", "bash", "write", "edit", "finish"];
     for name in names {
         let at = tag_index(s, name);
         if at < best_at {

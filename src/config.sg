@@ -15,3 +15,8 @@ pub const MAX_STEPS: Int = 12;
 // Per-observation truncation budgets, to protect the context window.
 pub const OBS_LIMIT: Int = 4000;
 pub const READ_LIMIT: Int = 6000;
+
+// Lines returned by `read` when the model does not ask for a window. Large
+// enough for most source files, small enough that a 4000-line one does not
+// arrive as a wall clipped mid-line with no way to ask for the rest.
+pub const READ_LINES: Int = 400;

@@ -156,32 +156,50 @@ pub fn indent_text(text: String, prefix: String) -> String {
 // The banner
 // =============================================================================
 
+pub const BANNER_WIDTH: Int = 42;
+
+// One row of the box. `text` is the plain, uncoloured content: padding is
+// measured against it and the colour applied afterwards, because escape codes
+// are invisible on screen but not to `str_len`. Hand-counted spaces are what
+// left the box ragged for the whole of v0.3.0.
+pub fn box_row(text: String, style: String, width: Int) -> String {
+    let used = str_len(text);
+    let pad = width - used;
+    if pad < 0 {
+        pad = 0;
+    }
+    let filler = str_repeat(" ", pad);
+    return "  " ++ sage_dark() ++ BOX_V ++ reset()
+        ++ styled(text, style) ++ filler
+        ++ sage_dark() ++ BOX_V ++ reset();
+}
+
 pub fn banner(version: String) -> String {
-    let sd = sage_dark();
-    let r = reset();
-    let g = gold();
-    let gb = gold_bright();
-    let sm = sage_mid();
-    let sl = sage_light();
-    let b = bold();
-    let v = BOX_V;
-    let h42 = str_repeat(BOX_H, 42);
-    let sp42 = "                                          ";
-    let sp15 = "               ";
+    let w = BANNER_WIDTH;
+    let rule = str_repeat(BOX_H, w);
 
-    let l1 = sd ++ "  " ++ BOX_TL ++ h42 ++ BOX_TR ++ r;
-    let l2 = sd ++ "  " ++ v ++ r ++ sp42 ++ sd ++ v ++ r;
-    let l3 = sd ++ "  " ++ v ++ r ++ "  " ++ g ++ "          ___          " ++ r ++ sp15 ++ sd ++ v ++ r;
-    let l4 = sd ++ "  " ++ v ++ r ++ "  " ++ gb ++ "         (o,o)         " ++ r ++ sp15 ++ sd ++ v ++ r;
-    let l5 = sd ++ "  " ++ v ++ r ++ "  " ++ sm ++ '         {`"' ++ "'" ++ '`}        ' ++ r ++ sp15 ++ sd ++ v ++ r;
-    let l6 = sd ++ "  " ++ v ++ r ++ "  " ++ sd ++ '         -"-"-         ' ++ r ++ sp15 ++ sd ++ v ++ r;
-    let l7 = sd ++ "  " ++ v ++ r ++ sp42 ++ sd ++ v ++ r;
-    let l8 = sd ++ "  " ++ v ++ r ++ "  " ++ b ++ g ++ "  W A R D" ++ r ++ "  " ++ sl ++ "The Sage Coding Agent" ++ r ++ "   " ++ sd ++ v ++ r;
-    let l9 = sd ++ "  " ++ v ++ r ++ "  " ++ sd ++ "  v" ++ version ++ "                              " ++ r ++ sd ++ v ++ r;
-    let l10 = sd ++ "  " ++ v ++ r ++ sp42 ++ sd ++ v ++ r;
-    let l11 = sd ++ "  " ++ BOX_BL ++ h42 ++ BOX_BR ++ r;
+    let quote = "'";
+    let owl_beak = '           {`"' ++ quote ++ '`}';
 
-    return "\n" ++ join([l1, l2, l3, l4, l5, l6, l7, l8, l9, l10, l11], "\n") ++ "\n";
+    let top = "  " ++ sage_dark() ++ BOX_TL ++ rule ++ BOX_TR ++ reset();
+    let bottom = "  " ++ sage_dark() ++ BOX_BL ++ rule ++ BOX_BR ++ reset();
+
+    let rows = [
+        top,
+        box_row("", "warm", w),
+        box_row("            ___", "gold", w),
+        box_row("           (o,o)", "bright", w),
+        box_row(owl_beak, "sage", w),
+        box_row('           -"-"-', "sage_dark", w),
+        box_row("", "warm", w),
+        box_row("    W A R D", "bold_gold", w),
+        box_row("    The Sage Coding Agent", "sage_light", w),
+        box_row("    v" ++ version, "dim", w),
+        box_row("", "warm", w),
+        bottom
+    ];
+
+    return "\n" ++ join(rows, "\n") ++ "\n";
 }
 
 // =============================================================================

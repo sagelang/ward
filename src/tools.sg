@@ -10,7 +10,25 @@
 use ui::sage_dark;
 use ui::reset;
 
-// Prefix each line with its 1-based number (dim), for `read` output.
+// Prefix each line with its number, dim, starting from `start`. A windowed read
+// still reports the line numbers the file actually has: getting this wrong would
+// be quietly destructive, since the model copies these numbers into its next
+// `edit`.
+//
+// Note the ordering: Sage resolves functions in declaration order, so a helper
+// has to appear above its callers.
+pub fn number_lines_from(s: String, first: Int) -> String {
+    let ls = lines(s);
+    let out: List<String> = [];
+    let n = first;
+    for line in ls {
+        out = push(out, sage_dark() ++ str(n) ++ reset() ++ " " ++ line);
+        n = n + 1;
+    }
+    return join(out, "\n");
+}
+
+// The whole file, numbered from 1, for `read` without a window.
 pub fn number_lines(s: String) -> String {
     let ls = lines(s);
     let out: List<String> = [];
@@ -20,6 +38,38 @@ pub fn number_lines(s: String) -> String {
         n = n + 1;
     }
     return join(out, "\n");
+}
+
+pub fn line_count(s: String) -> Int {
+    let ls = lines(s);
+    return len(ls);
+}
+
+// Lines [from, from+count), 1-based. A count of 0 or less means "to the end".
+pub fn slice_lines(s: String, from: Int, count: Int) -> String {
+    let ls = lines(s);
+    let out: List<String> = [];
+    let i = 1;
+    let taken = 0;
+    for line in ls {
+        if i >= from {
+            if count <= 0 || taken < count {
+                out = push(out, line);
+                taken = taken + 1;
+            }
+        }
+        i = i + 1;
+    }
+    return join(out, "\n");
+}
+
+// What to say after a windowed or clipped read, so the model knows there is
+// more and how to ask for it rather than assuming it has seen the file.
+pub fn read_footer(path: String, shown_from: Int, shown_to: Int, total: Int) -> String {
+    if shown_from <= 1 && shown_to >= total {
+        return "";
+    }
+    return "\n... showing lines " ++ str(shown_from) ++ "-" ++ str(shown_to) ++ " of " ++ str(total) ++ " in " ++ path ++ ". Ask for more with <read>" ++ path ++ "<from>N</from></read>.";
 }
 
 // Clip an observation to `max` chars, with a visible marker.

@@ -28,6 +28,16 @@ unreported).
 - **Suggested upstream fix:** the loader should propagate per-module parse
   errors instead of dropping the module; `mod <keyword>;` should be a hard error.
 
+**It is not only module names.** A reserved word used as a *parameter* name fails
+the same way and is harder to spot. `pub fn number_lines_from(s: String, start: Int)`
+kills the parse at that line, and the rest of the file goes with it: `truncate`,
+`shell_quote` and `count_occurrences`, all defined lower down and untouched, simply
+ceased to exist. The reported error was `item 'truncate' not found in module 'tools'`
+with a span pointing into a comment in a different file. Nothing mentioned `start`.
+
+Worth knowing when a module half-disappears: the failure is at the first reserved
+identifier, and everything below it in the file is collateral.
+
 The full reserved list (Sage 2.2.0, from `sage-parser/src/token.rs`):
 
 ```
@@ -112,6 +122,16 @@ Found while adding the project-context block: `let ctx = dup(context);` next to 
 - **Suggested upstream fix:** emit the context parameter under a reserved name
   (`__sage_ctx`), or reject `ctx` as an identifier. Silently shadowing the runtime
   handle produces an error message that points nowhere near the cause.
+
+The same class of problem covers *Rust* keywords that Sage happily accepts. A
+`let where = ...` in `core.sg` lowers to `let where` and the generated crate fails
+with `expected identifier, found keyword 'where'`. Sage identifiers should be
+escaped on the way out (`r#where`), since the set of Rust keywords is not something
+a Sage author should have to carry in their head.
+
+Watch for moves as well: a `String` bound once and used three times in a list
+literal produces `use of moved value`, because codegen emits the binding rather
+than a clone. Call the producing function again, or `dup()`.
 
 ---
 
