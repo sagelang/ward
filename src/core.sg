@@ -155,6 +155,9 @@ pub agent Ward {
                         break;
                     }
 
+                    // Bound the transcript before it goes into the prompt, not
+                    // after: the budget is about what the model is asked to read.
+                    self.history.set(compact_history(self.history.get(), TRANSCRIPT_BUDGET, KEEP_RECENT));
                     let transcript = join(self.history.get(), "\n\n");
                     let env_block = dup(context);
                     // `divine` requires a string-literal template (it is a keyword,
