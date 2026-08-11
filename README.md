@@ -40,8 +40,8 @@ It is a genuine **act → observe → act** loop, not a single-shot assistant. T
 
 - **Agentic loop** — perceive → decide → act → observe, repeated until the task is done (hard step cap to bound runaway loops).
 - **Knows where it is** — every task starts from the working directory, the git branch, what is uncommitted, and a gitignore-aware file list, plus `WARD.md`, `CLAUDE.md` or `AGENTS.md` if the project keeps one.
-- **A real tool layer** — `read`, `list`, `search`, `bash`, `write`, `edit`. The minimum set that makes an agent useful on a codebase.
-- **Surgical edits** — read-before-edit, unique-match replacement with a printed red/green diff. Never a blind whole-file clobber.
+- **A real tool layer** — `read` (whole file or a line window), `list`, `glob`, `search`, `bash`, `write`, `edit`. Inside a repository, `glob` and `search` go through git, so they never spend their budget on `target/` or anything else you have gitignored.
+- **Surgical edits** — read-before-edit, unique-match replacement with a printed red/green diff. Never a blind whole-file clobber. An explicit `<all>` opts into replacing every occurrence, with the count in the confirmation.
 - **Permission by default** — every side-effecting action (`edit`/`write`/`bash`) shows a preview and asks `[y/N]`. Opt into `auto` mode for trusted, fast iteration.
 - **Structured memory** — a typed transcript of actions and observations, truncated per-entry to protect the context window.
 - **Pure Sage** — no Rust FFI, no SDK. `grove.toml` is clean: the entire I/O surface is the `Fs` and `Shell` tools.
@@ -65,7 +65,7 @@ Then open Ward in whatever you are working on. It reads, edits and runs commands
 in the directory you start it from.
 
 ```bash
-cp ward/.env.example ~/.ward.env   # or export the three variables yourself
+export SAGE_API_KEY="your-api-key"
 cd ~/Projects/something
 ward
 ```
@@ -73,6 +73,9 @@ ward
 Credentials come from the environment: `SAGE_API_KEY`, and optionally
 `SAGE_LLM_URL` and `SAGE_MODEL` to point at something other than OpenAI. See
 [`.env.example`](.env.example) for Anthropic, OpenAI and local Ollama settings.
+The installed binary reads the environment only; `run-ward.sh` additionally
+sources a gitignored `.env`, from the current project first and then from Ward's
+own directory. A proper config file is [#10](https://github.com/sagelang/ward/issues/10).
 Ward keeps its session state in `.ward/` in the project, which wants gitignoring.
 
 To work on Ward itself, [`run-ward.sh`](run-ward.sh) rebuilds from `src/` and runs
