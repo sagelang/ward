@@ -1,46 +1,33 @@
 #!/usr/bin/env bash
-# Dev runtime harness for Ward.
+# Dev harness: rebuild Ward from src/ and run it against the current project.
 #
-# `sage run` is blocked in this environment: the 2.2.0 CLI generates a hearth
-# project requiring `sage-runtime = "^2.2.0"`, which is not published on
-# crates.io (latest published is 2.1.0). This script regenerates the hearth Rust
-# via `sage run` (which fails at cargo resolution AFTER codegen), then patches
-# the generated Cargo.toml to use the local sage source from the homebrew tap,
-# and builds/runs with cargo directly.
+# Unlike `install.sh`, this rebuilds every time and runs the debug binary, so it
+# is what you want while working on Ward itself. The build details (why we do not
+# simply `sage run`) live in scripts/build.sh.
 #
-# Usage: echo "quit" | ./run-ward.sh
+# Ward runs in the directory you invoke this from, not in the Ward repo:
+#
+#   cd ~/some/project && ~/Projects/ward/run-ward.sh
+#
+# Usage: ./run-ward.sh            interactive
+#        echo "quit" | ./run-ward.sh   smoke test
 set -uo pipefail
-cd "$(dirname "$0")"
+
+REPO="$(cd "$(dirname "$0")" && pwd)"
+HERE="$PWD"
 
 # Load LLM credentials from a gitignored .env if present, so the key never has
-# to be passed on the command line. Expected vars: SAGE_API_KEY, SAGE_LLM_URL,
-# SAGE_MODEL. See .env.example.
-if [ -f .env ]; then
-  set -a; . ./.env; set +a
-fi
+# to be passed on the command line. Prefer the current project's .env, then
+# Ward's own. Expected vars: SAGE_API_KEY, SAGE_LLM_URL, SAGE_MODEL. See
+# .env.example.
+for env_file in "$HERE/.env" "$REPO/.env"; do
+    if [ -f "$env_file" ]; then
+        set -a; . "$env_file"; set +a
+        break
+    fi
+done
 
-SAGE_TAP="/opt/homebrew/Library/Taps/cargopete/homebrew-sage"
-SAGE_SRC="$SAGE_TAP/crates"
-HEARTH="hearth/sage_program"
+BIN="$("$REPO/scripts/build.sh")" || exit 1
 
-# Prefer the locally-patched compiler (cross-module supervisor fix, Bug #6) if
-# present, else fall back to the installed `sage`.
-SAGE="$SAGE_TAP/target/debug/sage"
-[ -x "$SAGE" ] || SAGE="sage"
-
-# 1. Regenerate hearth Rust from .sg sources (ignore the expected cargo failure).
-"$SAGE" run . >/dev/null 2>&1
-
-# 2. Patch the freshly-generated Cargo.toml to the local runtime crates.
-if ! grep -q 'patch.crates-io' "$HEARTH/Cargo.toml"; then
-  cat >> "$HEARTH/Cargo.toml" <<PATCH
-
-[patch.crates-io]
-sage-runtime = { path = "$SAGE_SRC/sage-runtime" }
-sage-persistence = { path = "$SAGE_SRC/sage-persistence" }
-sage-mcp = { path = "$SAGE_SRC/sage-mcp" }
-PATCH
-fi
-
-# 3. Build & run.
-( cd "$HEARTH" && cargo run --quiet 2>&1 )
+# Run from the invoking directory: Ward's tools operate on its own cwd.
+exec "$BIN"

@@ -53,19 +53,39 @@ It is a genuine **act → observe → act** loop, not a single-shot assistant. T
 - [Sage](https://github.com/sagelang/sage) v2.2.0+
 - An OpenAI-compatible API key for the LLM (`divine`)
 
-### Run
+### Install
 
 ```bash
-export SAGE_API_KEY="your-api-key"
-cd ward
-sage run .
+git clone https://github.com/sagelang/ward && cd ward
+./install.sh                     # -> ~/.local/bin/ward
 ```
 
-> **Note on this checkout.** Two toolchain issues currently sit between `sage run .` and a running binary, both independent of Ward's own code:
+Then open Ward in whatever you are working on. It reads, edits and runs commands
+in the directory you start it from.
+
+```bash
+cp ward/.env.example ~/.ward.env   # or export the three variables yourself
+cd ~/Projects/something
+ward
+```
+
+Credentials come from the environment: `SAGE_API_KEY`, and optionally
+`SAGE_LLM_URL` and `SAGE_MODEL` to point at something other than OpenAI. See
+[`.env.example`](.env.example) for Anthropic, OpenAI and local Ollama settings.
+Ward keeps its session state in `.ward/` in the project, which wants gitignoring.
+
+To work on Ward itself, [`run-ward.sh`](run-ward.sh) rebuilds from `src/` and runs
+the result against your current directory, so `cd ~/Projects/something &&
+~/Projects/ward/run-ward.sh` picks up source changes without reinstalling.
+
+> **Note on this checkout.** Two toolchain issues sit between `sage build` and a
+> running binary, both independent of Ward's own code:
 > 1. The 2.2.0 CLI generates a build that depends on `sage-runtime 2.2.0`, which isn't published on crates.io yet.
 > 2. The cross-module supervisor fix Ward needs lives in a patched compiler (see [`docs/sage-notes.md`](docs/sage-notes.md)).
 >
-> The [`run-ward.sh`](run-ward.sh) harness works around both — it builds against the local Sage source and prefers the patched compiler if present. See the dev notes for details.
+> [`scripts/build.sh`](scripts/build.sh) works around both: it builds against a
+> local Sage checkout and prefers the patched compiler if present. Once 2.2.0
+> publishes, set `SAGE_SRC=""` and Ward builds from crates.io like anything else.
 
 ### Commands
 
@@ -99,7 +119,10 @@ live in the agent, where Sage requires tool use to be `use`-declared.
 ```
 ward/
 ├── grove.toml          # Sage project manifest
-├── run-ward.sh         # dev runtime harness (see docs/sage-notes.md)
+├── install.sh          # build and install `ward` on your PATH
+├── run-ward.sh         # dev harness: rebuild, then run against the current dir
+├── scripts/
+│   └── build.sh        # codegen + build (see docs/sage-notes.md)
 ├── docs/
 │   └── sage-notes.md   # language/compiler issues found + fixes
 └── src/

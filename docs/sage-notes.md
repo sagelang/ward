@@ -1,7 +1,7 @@
 # Sage notes — issues found building Ward v0.3.0
 
-Splitting Ward into modules and landing the v0.3.0 agentic loop surfaced six
-concrete Sage issues. Four were worked around in Ward's own source; two were
+Splitting Ward into modules and landing the v0.3.0 agentic loop surfaced seven
+concrete Sage issues. Five were worked around in Ward's own source; two were
 genuine compiler bugs fixed in `sage-codegen`. This is the record of each — both
 as documentation for Ward and as a starting point for upstreaming.
 
@@ -75,6 +75,26 @@ call`). The cast needs wrapping parens that codegen doesn't emit.
 - **Suggested upstream fix:** wrap cast expressions in parens when they are the
   receiver of a method call.
 
+### 5. `sage build` with no argument builds in single-file mode
+
+`sage build` defaults its `file` argument to the `entry` in `grove.toml`, and a
+file argument means single-file mode. So the default invocation of a multi-module
+project cannot resolve its own modules:
+
+```
+× item `Ward` not found in module `core`
+  use core::Ward;
+```
+
+The banner is the tell: "compiling main.sg" is single-file mode, "compiling
+project" is what you want.
+
+- **Fix in Ward:** `sage build . --emit-rust` in `scripts/build.sh`, with a comment
+  saying why the `.` is load-bearing.
+- **Suggested upstream fix:** when a `grove.toml` is present, default to project
+  mode. Falling back to single-file mode for the manifest's own entry point is
+  never the intent.
+
 ---
 
 ## Fixed in the compiler (`sage-codegen/src/generator.rs`)
@@ -82,7 +102,7 @@ call`). The cast needs wrapping parens that codegen doesn't emit.
 Both are cross-module codegen bugs: state collected per-module (or only from the
 root) instead of across the whole module tree. Both fixes add a global pre-pass.
 
-### 5. Supervisor can't construct an agent declared in another module
+### 6. Supervisor can't construct an agent declared in another module
 
 `generate_supervisor_main` looked up its child agent only in the **root module's**
 `program.agents`. With `agent Ward` in `core.sg` and the supervisor in `main.sg`,
@@ -95,7 +115,7 @@ struct Ward`.
   child lookup. Now the supervisor emits the full `Ward { … }` constructor with
   all `@persistent` initializers.
 
-### 6. Cross-module `String` consts are `.clone()`'d, not `.to_string()`'d
+### 7. Cross-module `String` consts are `.clone()`'d, not `.to_string()`'d
 
 A `String` const is emitted as `&'static str`; referencing it where a `String` is
 expected requires `.to_string()`. Codegen tracked which consts are strings only
@@ -112,7 +132,7 @@ found &str` (e.g. `banner(VERSION)` with `VERSION` in `config.sg`).
 ```bash
 cd /opt/homebrew/Library/Taps/cargopete/homebrew-sage
 cargo build --manifest-path crates/sage-cli/Cargo.toml --bin sage
-# → target/debug/sage   (run-ward.sh prefers this automatically)
+# → target/debug/sage   (scripts/build.sh prefers this automatically)
 ```
 
 The patches are self-contained additions (a struct field, two pre-pass loops, one
@@ -124,6 +144,7 @@ fallback lookup); `cargo install` would make them the default `sage` if desired.
 
 Unrelated to Ward's code: `sage run`/`build` generates a hearth project that
 depends on `sage-runtime = "^2.2.0"`, which isn't published on crates.io (latest
-published is 2.1.0), so cargo resolution fails *after* codegen. `run-ward.sh`
-regenerates the hearth Rust, patches its `Cargo.toml` to the local tap source via
-`[patch.crates-io]`, and builds with cargo directly.
+published is 2.1.0), so cargo resolution fails *after* codegen. `scripts/build.sh`
+generates the hearth Rust with `--emit-rust`, patches its `Cargo.toml` to a local
+Sage checkout via `[patch.crates-io]`, and builds with cargo directly. Set
+`SAGE_SRC=""` to skip the patch once 2.2.0 publishes.
