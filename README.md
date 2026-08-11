@@ -65,7 +65,7 @@ Then open Ward in whatever you are working on. It reads, edits and runs commands
 in the directory you start it from.
 
 ```bash
-cp ward/.env.example ~/.ward.env   # or export the three variables yourself
+export SAGE_API_KEY="your-api-key"
 cd ~/Projects/something
 ward
 ```
@@ -73,6 +73,9 @@ ward
 Credentials come from the environment: `SAGE_API_KEY`, and optionally
 `SAGE_LLM_URL` and `SAGE_MODEL` to point at something other than OpenAI. See
 [`.env.example`](.env.example) for Anthropic, OpenAI and local Ollama settings.
+The installed binary reads the environment only; `run-ward.sh` additionally
+sources a gitignored `.env`, from the current project first and then from Ward's
+own directory. A proper config file is [#10](https://github.com/sagelang/ward/issues/10).
 Ward keeps its session state in `.ward/` in the project, which wants gitignoring.
 
 To work on Ward itself, [`run-ward.sh`](run-ward.sh) rebuilds from `src/` and runs
