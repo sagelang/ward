@@ -2,3 +2,11 @@
 name = "ward"
 version = "0.3.0"
 entry = "src/main.sg"
+
+# Ward runs inside whatever project you invoke it from, so everything it leaves
+# behind is kept under a single gitignorable directory rather than scattered.
+# The path is baked in at codegen time and cannot expand `~`, so this is still
+# per-project rather than per-user. See sagelang/ward#3.
+[persistence]
+backend = "sqlite"
+path = ".ward/checkpoints.db"
