@@ -1,0 +1,85 @@
+// =============================================================================
+// project.sg — what Ward knows about the project it is sitting in
+// =============================================================================
+//
+// Ward runs in whatever directory you start it from, so the first thing the
+// model needs is a description of that place: where it is, what the repository
+// is doing, what files exist, and any instructions the project keeps for its
+// agents.
+//
+// Gathering that needs `Shell` and `Fs`, which Sage only allows inside an agent
+// (RFC-0011 §17.4), so the shelling out is done inline in core.sg. Everything
+// here is pure: it takes the raw command output and renders the block that gets
+// interpolated into the prompt.
+
+use tools::truncate;
+
+// Budgets. The context is re-sent on every step of the loop, so it is the one
+// part of the prompt that is paid for repeatedly and deserves to be tight.
+pub const DOC_LIMIT: Int = 4000;
+pub const TREE_LIMIT: Int = 3000;
+pub const STATUS_LIMIT: Int = 1200;
+
+// Files Ward reads as project instructions, in priority order. `WARD.md` first
+// so a project can address Ward specifically, then the two conventional names.
+pub fn doc_candidates() -> List<String> {
+    return ["WARD.md", "CLAUDE.md", "AGENTS.md"];
+}
+
+pub fn is_blank(s: String) -> Bool {
+    return trim(s) == "";
+}
+
+// A labelled block, omitted entirely when there is nothing to say. An empty
+// section is worse than no section: it invites the model to conclude something
+// definite from missing data.
+pub fn section(title: String, body: String) -> String {
+    if is_blank(body) {
+        return "";
+    }
+    // Command output arrives with a trailing newline; trimming keeps the block
+    // from growing a blank line between every section.
+    return title ++ ":\n" ++ trim(body) ++ "\n\n";
+}
+
+// One line per fact, for the short scalar things.
+pub fn fact(label: String, value: String) -> String {
+    if is_blank(value) {
+        return "";
+    }
+    return label ++ ": " ++ value ++ "\n";
+}
+
+// The environment block. `branch` is empty when the cwd is not a git working
+// tree, in which case the git sections drop out and the tree comes from `find`
+// rather than `git ls-files`, which the caller has already sorted out.
+pub fn render_context(
+    cwd: String,
+    branch: String,
+    dirty: String,
+    tree: String,
+    doc_name: String,
+    doc_body: String
+) -> String {
+    let out = "<environment>\n";
+    out = out ++ fact("Working directory", cwd);
+
+    if is_blank(branch) {
+        out = out ++ "Version control: not a git repository\n";
+    } else {
+        out = out ++ fact("Git branch", branch);
+    }
+    out = out ++ "\n";
+
+    out = out ++ section("Uncommitted changes", truncate(dirty, STATUS_LIMIT));
+    out = out ++ section("Files", truncate(tree, TREE_LIMIT));
+    out = out ++ "</environment>\n";
+
+    if !is_blank(doc_body) {
+        out = out ++ "\n<project-instructions from=\"" ++ doc_name ++ "\">\n";
+        out = out ++ truncate(doc_body, DOC_LIMIT);
+        out = out ++ "\n</project-instructions>\n";
+    }
+
+    return out;
+}

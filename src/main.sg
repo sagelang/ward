@@ -14,6 +14,7 @@
 //   proto.sg     tag decoding + the system/protocol prompt          (pure)
 //                (named `proto`, not `protocol`: the latter is a reserved word)
 //   tools.sg     observation formatting (line numbers, truncation)  (pure)
+//   project.sg   the environment block: cwd, git, tree, WARD.md     (pure)
 //   core.sg      the Ward agent + act-observe loop + Fs/Shell tools
 //                (named `core`, not `agent`: the latter is a reserved word)
 //
@@ -24,6 +25,7 @@ mod config;
 mod ui;
 mod proto;
 mod tools;
+mod project;
 mod core;
 
 use core::Ward;

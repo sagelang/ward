@@ -1,7 +1,7 @@
 # Sage notes — issues found building Ward v0.3.0
 
-Splitting Ward into modules and landing the v0.3.0 agentic loop surfaced seven
-concrete Sage issues. Five were worked around in Ward's own source; two were
+Splitting Ward into modules and landing the v0.3.0 agentic loop surfaced eight
+concrete Sage issues. Six were worked around in Ward's own source; two were
 genuine compiler bugs fixed in `sage-codegen`. This is the record of each — both
 as documentation for Ward and as a starting point for upstreaming.
 
@@ -59,7 +59,7 @@ build a prompt in a helper and pass the `String` in (`divine(prompt)` →
 `parse error: expected "<string>"`).
 
 - **Fix in Ward:** inlined the protocol prompt at the `divine` call site in
-  `core.sg` with `{wd}`/`{transcript}` interpolation. `proto.sg` documents why
+  `core.sg` with `{env_block}`/`{transcript}` interpolation. `proto.sg` documents why
   `build_prompt` can't exist as a function today.
 - **Suggested upstream fix:** allow `divine(<expr: String>)` so the prompt can be
   assembled separately (would also make the prompt pure and unit-testable).
@@ -95,6 +95,24 @@ project" is what you want.
   mode. Falling back to single-file mode for the manifest's own entry point is
   never the intent.
 
+### 6. A Sage variable named `ctx` breaks `divine`
+
+`divine` lowers to `ctx.infer_string(&format!(...))`, where `ctx` is the
+`AgentContext` parameter of the generated handler. The name is not hygienic, so a
+Sage local called `ctx` shadows it and the call lands on the wrong receiver:
+
+```
+error[E0599]: no method named `infer_string` found for struct `String`
+```
+
+Found while adding the project-context block: `let ctx = dup(context);` next to a
+`divine` call, which is the most natural name imaginable for that variable.
+
+- **Fix in Ward:** renamed the local to `env_block`.
+- **Suggested upstream fix:** emit the context parameter under a reserved name
+  (`__sage_ctx`), or reject `ctx` as an identifier. Silently shadowing the runtime
+  handle produces an error message that points nowhere near the cause.
+
 ---
 
 ## Fixed in the compiler (`sage-codegen/src/generator.rs`)
@@ -102,7 +120,7 @@ project" is what you want.
 Both are cross-module codegen bugs: state collected per-module (or only from the
 root) instead of across the whole module tree. Both fixes add a global pre-pass.
 
-### 6. Supervisor can't construct an agent declared in another module
+### 7. Supervisor can't construct an agent declared in another module
 
 `generate_supervisor_main` looked up its child agent only in the **root module's**
 `program.agents`. With `agent Ward` in `core.sg` and the supervisor in `main.sg`,
@@ -115,7 +133,7 @@ struct Ward`.
   child lookup. Now the supervisor emits the full `Ward { … }` constructor with
   all `@persistent` initializers.
 
-### 7. Cross-module `String` consts are `.clone()`'d, not `.to_string()`'d
+### 8. Cross-module `String` consts are `.clone()`'d, not `.to_string()`'d
 
 A `String` const is emitted as `&'static str`; referencing it where a `String` is
 expected requires `.to_string()`. Codegen tracked which consts are strings only

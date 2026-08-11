@@ -39,6 +39,7 @@ It is a genuine **act → observe → act** loop, not a single-shot assistant. T
 ## Features
 
 - **Agentic loop** — perceive → decide → act → observe, repeated until the task is done (hard step cap to bound runaway loops).
+- **Knows where it is** — every task starts from the working directory, the git branch, what is uncommitted, and a gitignore-aware file list, plus `WARD.md`, `CLAUDE.md` or `AGENTS.md` if the project keeps one.
 - **A real tool layer** — `read`, `list`, `search`, `bash`, `write`, `edit`. The minimum set that makes an agent useful on a codebase.
 - **Surgical edits** — read-before-edit, unique-match replacement with a printed red/green diff. Never a blind whole-file clobber.
 - **Permission by default** — every side-effecting action (`edit`/`write`/`bash`) shows a preview and asks `[y/N]`. Opt into `auto` mode for trusted, fast iteration.
@@ -130,11 +131,13 @@ ward/
     ├── core.sg         # the Ward agent + act-observe loop + Fs/Shell tools
     ├── proto.sg        # tag-protocol decoding (pure)
     ├── tools.sg        # observation formatting: line numbers, truncation (pure)
+    ├── project.sg      # the environment block: cwd, git, tree, WARD.md  (pure)
     ├── ui.sg           # palette, banner, status chrome, diff, confirm (pure)
     └── config.sg       # application constants (pure)
 ```
 
-**The loop.** Each turn, Ward builds a prompt from the transcript, asks the model
+**The loop.** Each turn, Ward builds a prompt from the project context and the
+transcript, asks the model
 (`divine`) for exactly **one** action, executes it against the tools, records a
 structured observation, and repeats — until the model emits `<finish>` or the
 step cap is hit.

@@ -12,7 +12,7 @@
 #      `--emit-rust`, point the generated Cargo.toml at a local Sage checkout,
 #      and drive cargo ourselves. Once 2.2.0 publishes, set SAGE_SRC="" and this
 #      step drops out.
-#   2. Ward needs the cross-module supervisor fix (docs/sage-notes.md, bug 6),
+#   2. Ward needs the cross-module supervisor fix (docs/sage-notes.md, bug 7),
 #      so a locally built compiler is preferred over the installed `sage`.
 #
 # Environment:
