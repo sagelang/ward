@@ -12,6 +12,13 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 
+# Load LLM credentials from a gitignored .env if present, so the key never has
+# to be passed on the command line. Expected vars: SAGE_API_KEY, SAGE_LLM_URL,
+# SAGE_MODEL. See .env.example.
+if [ -f .env ]; then
+  set -a; . ./.env; set +a
+fi
+
 SAGE_TAP="/opt/homebrew/Library/Taps/cargopete/homebrew-sage"
 SAGE_SRC="$SAGE_TAP/crates"
 HEARTH="hearth/sage_program"
