@@ -9,6 +9,7 @@
 
 use ui::sage_dark;
 use ui::reset;
+use proto::parse_digits;
 
 // Prefix each line with its number, dim, starting from `start`. A windowed read
 // still reports the line numbers the file actually has: getting this wrong would
@@ -97,6 +98,96 @@ pub fn count_occurrences(hay: String, needle: String) -> Int {
         rest = str_slice(rest, unwrap(i) + str_len(needle), str_len(rest));
     }
     return count;
+}
+
+// Characters the transcript will occupy in the prompt, separators included.
+pub fn transcript_size(entries: List<String>) -> Int {
+    let total = 0;
+    for e in entries {
+        total = total + str_len(e) + 2;
+    }
+    return total;
+}
+
+// The elision marker is itself a transcript entry, so compaction has to
+// recognise its own leavings. Without this, every step prepends a fresh marker
+// and the transcript creeps upward by one marker per step: a slow leak that
+// looks exactly like the bound working.
+pub const ELIDED_MARK: String = " earlier observations elided";
+
+pub fn is_elision_marker(e: String) -> Bool {
+    return starts_with(e, "[") && str_contains(e, ELIDED_MARK);
+}
+
+// The running total carried by an existing marker, so the count survives being
+// compacted again.
+pub fn marker_count(e: String) -> Int {
+    let sp = str_index_of(e, " ");
+    if is_none(sp) {
+        return 0;
+    }
+    return parse_digits(str_slice(e, 1, unwrap(sp)), 0);
+}
+
+// Keep the transcript inside `budget`, newest first.
+//
+// Walking backwards means the model keeps the steps it just took, which are the
+// ones it needs, and loses the oldest observations, which are usually a file it
+// has already acted on. Two things are never dropped: the most recent entries
+// (`keep_recent`, whatever their size, so a large observation cannot evict
+// itself) and every `USER:` line, because those are the task statements and
+// forgetting what was asked is the one failure that makes the rest pointless.
+//
+// What goes is replaced by a single marker, so the model can tell the
+// difference between "this never happened" and "you are no longer being shown
+// it", and can read the file again if it needs to.
+pub fn compact_history(entries: List<String>, budget: Int, keep_recent: Int) -> List<String> {
+    if transcript_size(entries) <= budget {
+        return entries;
+    }
+
+    // Lift out any previous marker and carry its count forward, so there is only
+    // ever one and it reports the true running total.
+    let carried = 0;
+    let real: List<String> = [];
+    for e in entries {
+        if is_elision_marker(e) {
+            carried = carried + marker_count(e);
+        } else {
+            real = push(real, e);
+        }
+    }
+
+    let newest_first = reverse(real);
+    let kept_reversed: List<String> = [];
+    let used = 0;
+    let dropped = 0;
+    let i = 0;
+
+    for e in newest_first {
+        let size = str_len(e) + 2;
+        let protected = i < keep_recent || starts_with(e, "USER: ");
+        if protected || used + size <= budget {
+            kept_reversed = push(kept_reversed, e);
+            used = used + size;
+        } else {
+            dropped = dropped + 1;
+        }
+        i = i + 1;
+    }
+
+    let kept = reverse(kept_reversed);
+    let total_dropped = carried + dropped;
+    if total_dropped == 0 {
+        return kept;
+    }
+
+    let marked: List<String> = [];
+    marked = push(marked, "[" ++ str(total_dropped) ++ ELIDED_MARK ++ " to stay within the context budget. Read a file again if you need it.]");
+    for e in kept {
+        marked = push(marked, e);
+    }
+    return marked;
 }
 
 // Single-quote a string for safe use inside a shell command.

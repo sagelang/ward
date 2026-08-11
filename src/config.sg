@@ -10,7 +10,22 @@ pub const VERSION: String = "0.3.0";
 pub const WARD_DIR: String = ".ward";
 
 // The act-observe loop is hard-capped so a confused model can't spin forever.
-pub const MAX_STEPS: Int = 12;
+// Twelve was too tight to be useful: reading a test, finding the bug, fixing it
+// and re-running spends most of that before anything happens. The transcript is
+// kept in hand by compaction rather than by starving the loop of steps.
+pub const MAX_STEPS: Int = 40;
+
+// Characters of transcript the prompt will carry. Older observations are elided
+// once it is exceeded. Roughly 5k tokens, which leaves room for the environment
+// block and the protocol on an 8k-context local model.
+pub const TRANSCRIPT_BUDGET: Int = 20000;
+
+// Recent entries always kept whole, however large, so the model never loses the
+// step it just took. This is a floor on the transcript, not a target: a read can
+// be READ_LIMIT long, so KEEP_RECENT of them can exceed TRANSCRIPT_BUDGET on
+// their own. Two keeps that floor near 12k while the budget still governs
+// everything older.
+pub const KEEP_RECENT: Int = 2;
 
 // Per-observation truncation budgets, to protect the context window.
 pub const OBS_LIMIT: Int = 4000;
