@@ -235,10 +235,22 @@ pub fn confirm_prompt(question: String) -> String {
     return "  " ++ sage_dark() ++ BOX_V ++ reset() ++ " " ++ gold() ++ "? " ++ reset() ++ warm_white() ++ question ++ reset() ++ sage_light() ++ "  [y/N] " ++ reset();
 }
 
-// True only on an explicit yes.
+// The same question, with a third answer: remember this one for good.
+pub fn confirm_prompt_always(question: String) -> String {
+    return "  " ++ sage_dark() ++ BOX_V ++ reset() ++ " " ++ gold() ++ "? " ++ reset() ++ warm_white() ++ question ++ reset() ++ sage_light() ++ "  [y/N/a=always] " ++ reset();
+}
+
+// "Always allow this exact command from now on." Declared above its caller:
+// Sage resolves functions in declaration order.
+pub fn is_always(answer: String) -> Bool {
+    let a = trim(answer);
+    return a == "a" || a == "always" || a == "A";
+}
+
+// True only on an explicit yes. `a` counts, since it is a yes plus a promise.
 pub fn is_yes(answer: String) -> Bool {
     let a = trim(answer);
-    return a == "y" || a == "yes" || a == "Y";
+    return a == "y" || a == "yes" || a == "Y" || is_always(answer);
 }
 
 pub fn show_commands() -> Unit {

@@ -43,10 +43,11 @@ It is a genuine **act → observe → act** loop, not a single-shot assistant. T
 - **A real tool layer** — `read` (whole file or a line window), `list`, `glob`, `search`, `bash`, `write`, `edit`. Inside a repository, `glob` and `search` go through git, so they never spend their budget on `target/` or anything else you have gitignored.
 - **Surgical edits** — read-before-edit, unique-match replacement with a printed red/green diff. Never a blind whole-file clobber. An explicit `<all>` opts into replacing every occurrence, with the count in the confirmation.
 - **Permission by default** — every side-effecting action (`edit`/`write`/`bash`) shows a preview and asks `[y/N]`. Opt into `auto` mode for trusted, fast iteration.
+- **Brakes that are not all-or-nothing** — `write` and `edit` are confined to the project directory, and answering `a` at a `bash` prompt records that exact command in `.ward/allow`, a plain text file you can read and edit. An allowlist you cannot inspect is not one.
 - **Read before you overwrite** — `write` is for new files. Over an existing one it is refused unless Ward has read it in this task, and the prompt then names how many lines are about to be discarded. Empty writes are refused outright.
 - **Structured memory** — a typed transcript of actions and observations, truncated per-entry to protect the context window.
 - **Pure Sage** — no Rust FFI, no SDK. `grove.toml` is clean: the entire I/O surface is the `Fs` and `Shell` tools.
-- **Crash-safe** — runs as a `Transient` child under a `OneForOne` supervisor; a mid-task crash restarts the agent, not the process. Session state is `@persistent`.
+- **Crash-safe, and it actually resumes** — runs as a `Transient` child under a `OneForOne` supervisor; a mid-task crash restarts the agent, not the process, and the `@persistent` transcript comes back with it. `reset` starts clean.
 
 ## Usage
 
@@ -101,6 +102,7 @@ the result against your current directory, so `cd ~/Projects/something &&
 | `scan`         | Scan project structure |
 | `status`       | Show session status (sessions, cwd, auto mode, time) |
 | `auto on`/`off`| Toggle auto-approve (skip the `[y/N]` gate) |
+| `reset`        | Clear the carried-over transcript |
 | `clear`        | Clear the screen |
 | `exit`         | Leave Ward |
 
